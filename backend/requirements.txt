@@ -1,0 +1,32 @@
+# FastAPI: the framework that handles HTTP requests and routing
+fastapi==0.111.0
+# uvicorn: the server that actually runs FastAPI and listens for connections
+# [standard] installs optional extras like faster JSON handling
+uvicorn[standard]==0.29.0
+
+# asyncpg: speaks PostgreSQL's protocol directly — we write raw SQL
+# and asyncpg executes it. No ORM in the middle.
+asyncpg==0.29.0
+# alembic: handles database migrations (version control for your schema)
+# We still need this to manage schema changes over time
+alembic==1.13.1
+
+# celery: the task queue library that powers our background worker
+celery==5.3.6
+# redis: the Python client for talking to the Redis server
+redis==5.0.4
+
+# pydantic: validates data shapes — if a request is missing a field,
+# pydantic catches it before your code ever runs
+pydantic==2.7.1
+# pydantic-settings: extends pydantic to read config from .env files
+pydantic-settings==2.2.1
+
+# python-dotenv: loads .env files into environment variables
+python-dotenv==1.0.1
+# httpx: async HTTP client for making requests to external APIs
+httpx==0.27.0
+# python-multipart: required for file upload support in FastAPI
+python-multipart==0.0.9
+# numpy: fast numerical computation — used in terrain generation
+numpy==1.26.4
