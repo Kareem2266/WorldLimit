@@ -8,8 +8,11 @@ uvicorn[standard]==0.29.0
 # and asyncpg executes it. No ORM in the middle.
 asyncpg==0.29.0
 # alembic: handles database migrations (version control for your schema)
-# We still need this to manage schema changes over time
 alembic==1.13.1
+# psycopg2-binary: synchronous postgres driver used ONLY by Alembic.
+# Alembic was built for synchronous drivers. Our app uses asyncpg,
+# but migrations need this to actually connect and run the SQL.
+psycopg2-binary==2.9.9
 
 # celery: the task queue library that powers our background worker
 celery==5.3.6

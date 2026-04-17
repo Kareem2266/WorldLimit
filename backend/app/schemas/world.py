@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class GenerateRequest(BaseModel):
+    prompt: str = Field(
+        ...,
+        min_length=3,
+        max_length=1000,
+    )
+    seed: int | None = Field(default=None)
+
+
+class GenerateResponse(BaseModel):
+    job_id: uuid.UUID
+    world_id: uuid.UUID
+    status: str
+
+
+class WorldOut(BaseModel):
+    id: uuid.UUID
+    prompt: str
+    status: str
+    params: dict[str, Any] | None
+    created_at: datetime
