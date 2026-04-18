@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const PLANE_SIZE = 200;
 const GRID = 256;
@@ -12,7 +13,12 @@ let renderer, scene, camera, controls;
 let mesh = null;
 let water = null;
 let base = null;
+let vegetation = null;
 let initialized = false;
+
+let _coniferGeom = null;
+let _broadleafGeom = null;
+let _vegMaterial = null;
 
 // ---------- scene setup ----------
 
@@ -116,6 +122,144 @@ export async function renderTerrain(imageUrl, params = null) {
 
   _buildBase(params);
   _buildWater(params);
+  _buildVegetation(params, heights);
+}
+
+//  vegetation 
+
+function _buildVegetation(params, heights) {
+  if (vegetation) {
+    scene.remove(vegetation);
+    vegetation.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+    });
+    vegetation = null;
+  }
+
+  const plan = _vegetationPlan(params);
+  if (plan.attempts === 0) return;
+
+  const palette = _pickPalette(params);
+  const snowY = palette.snowLine * HEIGHT_SCALE;
+  const waterY = params && params.bio12 < 200 ? -Infinity : WATER_LEVEL * HEIGHT_SCALE;
+  const maxSlope = 0.08;
+
+  const conifers = [];
+  const broadleafs = [];
+  const m = new THREE.Matrix4();
+  const p = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const s = new THREE.Vector3();
+
+  for (let i = 0; i < plan.attempts; i++) {
+    const col = Math.floor(Math.random() * (GRID - 2)) + 1;
+    const row = Math.floor(Math.random() * (GRID - 2)) + 1;
+    const idx = row * GRID + col;
+    const h = heights[idx];
+    const y = h * HEIGHT_SCALE;
+
+    if (y < waterY + 0.4) continue;
+    if (y > snowY - 1.5) continue;
+
+    const dx = Math.abs(heights[row * GRID + col + 1] - h);
+    const dz = Math.abs(heights[(row + 1) * GRID + col] - h);
+    if (Math.max(dx, dz) > maxSlope) continue;
+
+    const x = -PLANE_SIZE / 2 + (col / (GRID - 1)) * PLANE_SIZE;
+    const z = -PLANE_SIZE / 2 + (row / (GRID - 1)) * PLANE_SIZE;
+
+    const r = Math.random();
+    const pickConifer = r < plan.coniferRatio;
+    const pickBroadleaf = !pickConifer && r < plan.coniferRatio + plan.broadleafRatio;
+    if (!pickConifer && !pickBroadleaf) continue;
+
+    const scl = 0.7 + Math.random() * 0.6;
+    p.set(x, y - 0.1, z);
+    e.set(0, Math.random() * Math.PI * 2, 0);
+    q.setFromEuler(e);
+    s.set(scl, scl, scl);
+    m.compose(p, q, s);
+
+    (pickConifer ? conifers : broadleafs).push(m.clone());
+  }
+
+  vegetation = new THREE.Group();
+  const mat = _getVegMaterial();
+  const coniferMesh = _instancedFromMatrices(_getConiferGeom(), mat, conifers);
+  const broadleafMesh = _instancedFromMatrices(_getBroadleafGeom(), mat, broadleafs);
+  if (coniferMesh) vegetation.add(coniferMesh);
+  if (broadleafMesh) vegetation.add(broadleafMesh);
+  scene.add(vegetation);
+}
+
+function _instancedFromMatrices(geom, material, matrices) {
+  if (matrices.length === 0) return null;
+  const im = new THREE.InstancedMesh(geom, material, matrices.length);
+  for (let i = 0; i < matrices.length; i++) im.setMatrixAt(i, matrices[i]);
+  im.instanceMatrix.needsUpdate = true;
+  im.castShadow = true;
+  im.receiveShadow = true;
+  return im;
+}
+
+function _vegetationPlan(params) {
+  if (!params) return { attempts: 0 };
+  const { bio1, bio12 } = params;
+
+  if (bio1 >= 20 && bio12 < 300) return { attempts: 0, coniferRatio: 0, broadleafRatio: 0 };      // desert
+  if (bio1 >= 20 && bio12 < 1200) return { attempts: 150, coniferRatio: 0, broadleafRatio: 1 };   // savanna
+  if (bio1 >= 20) return { attempts: 1200, coniferRatio: 0, broadleafRatio: 1 };                  // jungle
+  if (bio1 >= 8 && bio12 < 400) return { attempts: 120, coniferRatio: 0.3, broadleafRatio: 0.7 }; // dry temperate
+  if (bio1 >= 8) return { attempts: 900, coniferRatio: 0.5, broadleafRatio: 0.5 };                // temperate forest
+  if (bio1 >= -2) return { attempts: 550, coniferRatio: 1, broadleafRatio: 0 };                   // boreal
+  return { attempts: 0, coniferRatio: 0, broadleafRatio: 0 };                                     // tundra
+}
+
+function _getVegMaterial() {
+  if (_vegMaterial) return _vegMaterial;
+  _vegMaterial = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.95,
+    metalness: 0.0,
+    flatShading: true,
+  });
+  return _vegMaterial;
+}
+
+function _getConiferGeom() {
+  if (_coniferGeom) return _coniferGeom;
+  const trunk = new THREE.CylinderGeometry(0.14, 0.22, 1.6, 6);
+  trunk.translate(0, 0.8, 0);
+  _paintGeom(trunk, [0.32, 0.20, 0.11]);
+  const foliage = new THREE.ConeGeometry(1.1, 3.3, 8);
+  foliage.translate(0, 2.7, 0);
+  _paintGeom(foliage, [0.12, 0.36, 0.18]);
+  _coniferGeom = mergeGeometries([trunk, foliage]);
+  return _coniferGeom;
+}
+
+function _getBroadleafGeom() {
+  if (_broadleafGeom) return _broadleafGeom;
+  const trunk = new THREE.CylinderGeometry(0.17, 0.25, 1.8, 6);
+  trunk.translate(0, 0.9, 0);
+  _paintGeom(trunk, [0.36, 0.24, 0.14]);
+  const foliage = new THREE.SphereGeometry(1.3, 6, 5);
+  foliage.translate(0, 2.6, 0);
+  _paintGeom(foliage, [0.22, 0.44, 0.20]);
+  _broadleafGeom = mergeGeometries([trunk, foliage]);
+  return _broadleafGeom;
+}
+
+function _paintGeom(geom, rgb) {
+  const n = geom.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3 + 0] = rgb[0];
+    arr[i * 3 + 1] = rgb[1];
+    arr[i * 3 + 2] = rgb[2];
+  }
+  geom.setAttribute("color", new THREE.BufferAttribute(arr, 3));
 }
 
 //  base (skirt + floor)
