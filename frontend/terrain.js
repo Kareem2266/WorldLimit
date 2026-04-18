@@ -4,9 +4,12 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const PLANE_SIZE = 200;
 const GRID = 256;
 const HEIGHT_SCALE = 45;
+const WATER_LEVEL = 0.10;      // fraction of HEIGHT_SCALE
+const WATER_EXTENT = 1.0;      // 1.0 = exactly matches terrain, larger = extends past
 
 let renderer, scene, camera, controls;
 let mesh = null;
+let water = null;
 let initialized = false;
 
 // ---------- scene setup ----------
@@ -51,7 +54,7 @@ export function initScene(canvas) {
   tick();
 }
 
-// ---------- mesh build ----------
+//  mesh build 
 
 export async function renderTerrain(imageUrl, params = null) {
   const heights = await _loadHeights(imageUrl);
@@ -94,10 +97,45 @@ export async function renderTerrain(imageUrl, params = null) {
   }
   mesh = new THREE.Mesh(geometry, material);
   scene.add(mesh);
+
+  _buildWater(params);
 }
 
-// ---------- biome palette ----------
-//
+// water
+
+function _buildWater(params) {
+  if (water) {
+    scene.remove(water);
+    water.geometry.dispose();
+    water.material.dispose();
+    water = null;
+  }
+
+  // Skip water in very dry climates (desert).
+  const bio12 = params ? params.bio12 : 800;
+  if (bio12 < 200) return;
+
+  const geometry = new THREE.PlaneGeometry(
+    PLANE_SIZE * WATER_EXTENT,
+    PLANE_SIZE * WATER_EXTENT,
+  );
+  geometry.rotateX(-Math.PI / 2);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x1a3a5a,
+    roughness: 0.25,
+    metalness: 0.2,
+    transparent: true,
+    opacity: 0.78,
+    side: THREE.DoubleSide,
+  });
+
+  water = new THREE.Mesh(geometry, material);
+  water.position.y = WATER_LEVEL * HEIGHT_SCALE;
+  scene.add(water);
+}
+
+// Biomes
 // Pick a (lowland, midland) color pair from bio1 (temp) + bio12 (precip).
 // Rock + snow are universal but the snow line shifts with temperature.
 //
@@ -188,8 +226,6 @@ function _colorForHeight(h, p, out) {
   }
   out.setRGB(p.snow[0], p.snow[1], p.snow[2]);
 }
-
-// ---------- image → heights ----------
 
 async function _loadHeights(imageUrl) {
   const img = await _loadImage(imageUrl);
