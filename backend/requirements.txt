@@ -51,3 +51,5 @@ sentence-transformers==2.7.0
 # noise: Ken Perlin's reference implementation of Perlin/simplex noise in C.
 # Used to synthesize procedural heightmaps from the predicted terrain params.
 noise==1.2.2
+# Pillow: saves heightmaps as 16-bit grayscale PNGs for Phase 5 / rendering.
+Pillow==10.3.0

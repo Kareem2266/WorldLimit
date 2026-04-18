@@ -67,10 +67,14 @@ def generate_heightmap(
 
 
 if __name__ == "__main__":
+    import os
+    import re
     import sys
     import time
+    from pathlib import Path
 
     from app.ml.inference import predict_terrain
+    from app.ml.terrain.export import save_heightmap_png
 
     prompt = " ".join(sys.argv[1:]) or "snowy alpine valley"
     print(f"Prompt: {prompt!r}")
@@ -91,3 +95,9 @@ if __name__ == "__main__":
     print(f"  max:   {heights.max():>8.1f} m")
     print(f"  mean:  {heights.mean():>8.1f} m")
     print(f"  std:   {heights.std():>8.1f} m")
+
+    data_dir = Path(os.getenv("DATA_DIR", "/data"))
+    slug = re.sub(r"[^a-z0-9]+", "_", prompt.lower()).strip("_")[:60]
+    out_path = data_dir / "output" / "heightmaps" / f"{slug}.png"
+    save_heightmap_png(heights, out_path)
+    print(f"\nSaved heightmap → {out_path}")
