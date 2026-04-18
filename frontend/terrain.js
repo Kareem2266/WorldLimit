@@ -147,7 +147,8 @@ function _buildVegetation(params, heights) {
 
   const palette = _pickPalette(params);
   const snowY = palette.snowLine * heightScale;
-  const waterY = params && params.bio12 < 200 ? -Infinity : WATER_LEVEL * heightScale;
+  const waterLevel = _waterLevelFraction(params);
+  const waterY = waterLevel == null ? -Infinity : waterLevel * heightScale;
   const maxSlope = 0.08;
 
   const conifers = [];
@@ -180,7 +181,7 @@ function _buildVegetation(params, heights) {
     const pickBroadleaf = !pickConifer && r < plan.coniferRatio + plan.broadleafRatio;
     if (!pickConifer && !pickBroadleaf) continue;
 
-    const scl = 0.7 + Math.random() * 0.6;
+    const scl = plan.scaleMin + Math.random() * (plan.scaleMax - plan.scaleMin);
     p.set(x, y - 0.1, z);
     e.set(0, Math.random() * Math.PI * 2, 0);
     q.setFromEuler(e);
@@ -213,13 +214,29 @@ function _vegetationPlan(params) {
   if (!params) return { attempts: 0 };
   const { bio1, bio12 } = params;
 
-  if (bio1 >= 20 && bio12 < 300) return { attempts: 0, coniferRatio: 0, broadleafRatio: 0 };      // desert
-  if (bio1 >= 20 && bio12 < 1200) return { attempts: 150, coniferRatio: 0, broadleafRatio: 1 };   // savanna
-  if (bio1 >= 20) return { attempts: 1200, coniferRatio: 0, broadleafRatio: 1 };                  // jungle
-  if (bio1 >= 8 && bio12 < 400) return { attempts: 120, coniferRatio: 0.3, broadleafRatio: 0.7 }; // dry temperate
-  if (bio1 >= 8) return { attempts: 900, coniferRatio: 0.5, broadleafRatio: 0.5 };                // temperate forest
-  if (bio1 >= -2) return { attempts: 550, coniferRatio: 1, broadleafRatio: 0 };                   // boreal
-  return { attempts: 0, coniferRatio: 0, broadleafRatio: 0 };                                     // tundra
+  // desert
+  if (bio1 >= 20 && bio12 < 300)
+    return { attempts: 0, coniferRatio: 0, broadleafRatio: 0, scaleMin: 1, scaleMax: 1 };
+  // savanna — sparse, small
+  if (bio1 >= 20 && bio12 < 1200)
+    return { attempts: 180, coniferRatio: 0, broadleafRatio: 1, scaleMin: 0.7, scaleMax: 1.2 };
+  // tropical forest (wet, not ultra-wet)
+  if (bio1 >= 20 && bio12 < 2000)
+    return { attempts: 2600, coniferRatio: 0, broadleafRatio: 1, scaleMin: 1.0, scaleMax: 1.8 };
+  // rainforest — dense, tall canopy
+  if (bio1 >= 20)
+    return { attempts: 4500, coniferRatio: 0, broadleafRatio: 1, scaleMin: 1.4, scaleMax: 2.4 };
+  // temperate dry — sparse
+  if (bio1 >= 8 && bio12 < 400)
+    return { attempts: 150, coniferRatio: 0.3, broadleafRatio: 0.7, scaleMin: 0.7, scaleMax: 1.2 };
+  // temperate forest
+  if (bio1 >= 8)
+    return { attempts: 1100, coniferRatio: 0.5, broadleafRatio: 0.5, scaleMin: 0.8, scaleMax: 1.5 };
+  // boreal
+  if (bio1 >= -2)
+    return { attempts: 700, coniferRatio: 1, broadleafRatio: 0, scaleMin: 0.8, scaleMax: 1.6 };
+  // tundra
+  return { attempts: 0, coniferRatio: 0, broadleafRatio: 0, scaleMin: 1, scaleMax: 1 };
 }
 
 function _getVegMaterial() {
@@ -360,9 +377,8 @@ function _buildWater(params) {
     water = null;
   }
 
-  // Skip water in very dry climates (desert).
-  const bio12 = params ? params.bio12 : 800;
-  if (bio12 < 200) return;
+  const level = _waterLevelFraction(params);
+  if (level == null) return;
 
   const geometry = new THREE.PlaneGeometry(
     PLANE_SIZE * WATER_EXTENT,
@@ -380,9 +396,22 @@ function _buildWater(params) {
   });
 
   water = new THREE.Mesh(geometry, material);
-  water.position.y = WATER_LEVEL * heightScale;
+  water.position.y = level * heightScale;
   water.receiveShadow = true;
   scene.add(water);
+}
+
+function _waterLevelFraction(params) {
+  if (!params) return WATER_LEVEL;
+  const bio12 = params.bio12;
+  const elev_std = params.elev_std;
+
+  if (bio12 < 200) return null;                              // desert, no water
+  if (bio12 > 1500 && elev_std < 150) return 0.42;           // flat + very wet (Amazon, wetlands)
+  if (bio12 > 1200 && elev_std < 200) return 0.28;           // flat + wet (tropical lowland)
+  if (bio12 > 1500) return 0.18;                             // wet mountainous
+  if (bio12 > 800) return 0.12;                              // moderate
+  return 0.06;                                               // arid edge
 }
 
 function _computeHeightScale(minM, maxM) {
