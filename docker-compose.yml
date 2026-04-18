@@ -34,6 +34,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ./frontend:/frontend
       - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"

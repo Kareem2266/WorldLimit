@@ -52,4 +52,9 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    return {"message": "WorldLimit API — visit /docs for the API reference"}
+    return {"message": "WorldLimit API — visit /docs for the API reference, or /app/ for the UI"}
+
+
+_frontend_dir = Path(os.getenv("FRONTEND_DIR", "/frontend"))
+if _frontend_dir.is_dir():
+    app.mount("/app", StaticFiles(directory=_frontend_dir, html=True), name="frontend")
