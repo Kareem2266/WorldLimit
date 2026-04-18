@@ -16,10 +16,19 @@ class GenerateRequest(BaseModel):
     seed: int | None = Field(default=None)
 
 
+class TerrainParamsOut(BaseModel):
+    elev_mean: float
+    elev_std: float
+    slope_mean: float
+    bio1: float
+    bio4: float
+    bio12: float
+
+
 class GenerateResponse(BaseModel):
-    job_id: uuid.UUID
-    world_id: uuid.UUID
-    status: str
+    prompt: str
+    params: TerrainParamsOut
+    heightmap_url: str
 
 
 class WorldOut(BaseModel):

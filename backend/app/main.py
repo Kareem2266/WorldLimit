@@ -1,7 +1,10 @@
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import create_pool, close_pool
@@ -25,6 +28,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://localhost:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -32,6 +36,10 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+
+_static_dir = Path(os.getenv("DATA_DIR", "/data")) / "output"
+_static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.get("/health")
