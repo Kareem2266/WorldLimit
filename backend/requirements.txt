@@ -47,3 +47,7 @@ torch==2.3.1
 # sentence-transformers: turns a string into a 384-dim semantic vector
 # (pre-trained model: all-MiniLM-L6-v2). Pulls in transformers + tokenizers.
 sentence-transformers==2.7.0
+
+# noise: Ken Perlin's reference implementation of Perlin/simplex noise in C.
+# Used to synthesize procedural heightmaps from the predicted terrain params.
+noise==1.2.2
