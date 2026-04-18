@@ -33,3 +33,9 @@ httpx==0.27.0
 python-multipart==0.0.9
 # numpy: fast numerical computation — used in terrain generation
 numpy==1.26.4
+# rasterio: reads and writes geospatial raster files (GeoTIFF, HGT, etc.)
+rasterio==1.4.3
+# scikit-learn: machine learning toolkit — we use it for k-means clustering
+scikit-learn==1.4.2
+# pandas: tabular data — used to build and save the feature CSV
+pandas==2.2.2
