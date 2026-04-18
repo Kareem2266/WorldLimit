@@ -64,6 +64,12 @@
         cursor: pointer;
       }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.secondary {
+        background: #11151a;
+        color: var(--fg);
+        border: 1px solid var(--border);
+      }
+      button.secondary:hover:not(:disabled) { border-color: var(--accent); }
 
       #status { color: var(--muted); font-size: 12px; min-height: 16px; }
       #status.error { color: #ff6b6b; }
@@ -118,6 +124,7 @@
           autocomplete="off"
         />
         <button type="submit" id="submit">Generate</button>
+        <button type="button" id="export" class="secondary" disabled title="Download a Godot/Unity-ready ZIP of the current world">Export</button>
       </form>
       <div id="status"></div>
     </header>
@@ -127,6 +134,6 @@
       <pre id="params"></pre>
     </main>
 
-    <script type="module" src="/app/main.js"></script>
+    <script type="module" src="/app/main.js?v=2"></script>
   </body>
 </html>

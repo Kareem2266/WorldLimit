@@ -1,42 +1,48 @@
-import uuid
-from pathlib import Path
+"""
+export.py — synchronous "download this world as a Godot/Unity bundle" endpoint.
+
+Given a prompt (+ optional seed), re-runs the MLP + Perlin generator and
+packages the result into a ZIP suitable for importing into either engine.
+
+Because generation is ~2s of CPU, the heightmap synth and the bundling step
+are both pushed to a worker thread so the event loop stays responsive.
+
+Kept the old job-based route commented in git history; the /api/jobs pathway
+is untouched for Stage 6.
+"""
+from __future__ import annotations
+
+import asyncio
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
-from app.database import get_pool
+from app.ml.inference import predict_terrain
+from app.ml.terrain.export_bundle import build_world_bundle
+from app.ml.terrain.generator import generate_heightmap
+from app.schemas.world import GenerateRequest
 
 router = APIRouter()
 
-EXPORT_DIR = Path("/tmp/worldlimit/exports")
 
+@router.post("/export")
+async def export_world(body: GenerateRequest) -> Response:
+    """Prompt → ZIP of heightmap + terrain OBJ + trees + importer scripts."""
+    try:
+        params = predict_terrain(body.prompt)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"inference failed: {e}") from e
 
-@router.get("/export/{job_id}")
-async def export_world(job_id: uuid.UUID):
-    pool = get_pool()
+    seed = body.seed if body.seed is not None else 42
+    heights = await asyncio.to_thread(generate_heightmap, params, seed=seed)
+    bundle = await asyncio.to_thread(build_world_bundle, body.prompt, seed, heights, params)
 
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT status, world_id FROM jobs WHERE id = $1",
-            job_id,
-        )
-
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-
-    if row["status"] != "done":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job not ready for export (status: {row['status']})",
-        )
-
-    export_path = EXPORT_DIR / f"{row['world_id']}.zip"
-
-    if not export_path.exists():
-        raise HTTPException(status_code=404, detail="Export file not found")
-
-    return FileResponse(
-        path=str(export_path),
+    return Response(
+        content=bundle.zip_bytes,
         media_type="application/zip",
-        filename=f"world_{row['world_id']}.zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{bundle.filename}"',
+            "X-WorldLimit-Slug": bundle.slug,
+            "X-WorldLimit-Tree-Count": str(bundle.tree_count),
+        },
     )
