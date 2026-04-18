@@ -4,10 +4,15 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const PLANE_SIZE = 200;
 const GRID = 256;
-const HEIGHT_SCALE = 45;
-const WATER_LEVEL = 0.10;      // fraction of HEIGHT_SCALE
-const WATER_EXTENT = 1.0;      // 1.0 = exactly matches terrain
-const BASE_DEPTH = 6;          // how far below Y=0 the skirt/floor sits
+const HEIGHT_SCALE_REF = 60;          // world-units used at REFERENCE_RANGE_M
+const REFERENCE_RANGE_M = 700;        // real elevation range that maps to HEIGHT_SCALE_REF
+const HEIGHT_SCALE_MIN = 20;          // never render flatter than this
+const HEIGHT_SCALE_MAX = 110;         // cap dramatic vertical exaggeration
+const WATER_LEVEL = 0.10;             // fraction of current height scale
+const WATER_EXTENT = 1.0;             // 1.0 = exactly matches terrain
+const BASE_DEPTH = 6;                 // how far below Y=0 the skirt/floor sits
+
+let heightScale = HEIGHT_SCALE_REF;   // updated per-generate based on real elevation range
 
 let renderer, scene, camera, controls;
 let mesh = null;
@@ -76,8 +81,9 @@ export function initScene(canvas) {
 
 //  mesh build 
 
-export async function renderTerrain(imageUrl, params = null) {
+export async function renderTerrain(imageUrl, params = null, minM = null, maxM = null) {
   const heights = await _loadHeights(imageUrl);
+  heightScale = _computeHeightScale(minM, maxM);
 
   const geometry = new THREE.PlaneGeometry(
     PLANE_SIZE, PLANE_SIZE, GRID - 1, GRID - 1,
@@ -86,7 +92,7 @@ export async function renderTerrain(imageUrl, params = null) {
 
   const pos = geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, heights[i] * HEIGHT_SCALE);
+    pos.setY(i, heights[i] * heightScale);
   }
   pos.needsUpdate = true;
   geometry.computeVertexNormals();
@@ -140,8 +146,8 @@ function _buildVegetation(params, heights) {
   if (plan.attempts === 0) return;
 
   const palette = _pickPalette(params);
-  const snowY = palette.snowLine * HEIGHT_SCALE;
-  const waterY = params && params.bio12 < 200 ? -Infinity : WATER_LEVEL * HEIGHT_SCALE;
+  const snowY = palette.snowLine * heightScale;
+  const waterY = params && params.bio12 < 200 ? -Infinity : WATER_LEVEL * heightScale;
   const maxSlope = 0.08;
 
   const conifers = [];
@@ -157,7 +163,7 @@ function _buildVegetation(params, heights) {
     const row = Math.floor(Math.random() * (GRID - 2)) + 1;
     const idx = row * GRID + col;
     const h = heights[idx];
-    const y = h * HEIGHT_SCALE;
+    const y = h * heightScale;
 
     if (y < waterY + 0.4) continue;
     if (y > snowY - 1.5) continue;
@@ -374,9 +380,16 @@ function _buildWater(params) {
   });
 
   water = new THREE.Mesh(geometry, material);
-  water.position.y = WATER_LEVEL * HEIGHT_SCALE;
+  water.position.y = WATER_LEVEL * heightScale;
   water.receiveShadow = true;
   scene.add(water);
+}
+
+function _computeHeightScale(minM, maxM) {
+  if (minM == null || maxM == null) return HEIGHT_SCALE_REF;
+  const range = Math.max(maxM - minM, 0);
+  const raw = HEIGHT_SCALE_REF * (range / REFERENCE_RANGE_M);
+  return Math.min(Math.max(raw, HEIGHT_SCALE_MIN), HEIGHT_SCALE_MAX);
 }
 
 // Biomes

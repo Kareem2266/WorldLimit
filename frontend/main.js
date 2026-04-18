@@ -33,7 +33,7 @@ form.addEventListener("submit", async (e) => {
 
     const data = await res.json();
     const url = `${data.heightmap_url}?t=${Date.now()}`;
-    await renderTerrain(url, data.params);
+    await renderTerrain(url, data.params, data.heightmap_min_m, data.heightmap_max_m);
 
     const dt = ((performance.now() - t0) / 1000).toFixed(1);
     statusEl.textContent = `done in ${dt}s`;

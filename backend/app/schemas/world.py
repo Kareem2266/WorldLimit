@@ -29,6 +29,8 @@ class GenerateResponse(BaseModel):
     prompt: str
     params: TerrainParamsOut
     heightmap_url: str
+    heightmap_min_m: float
+    heightmap_max_m: float
 
 
 class WorldOut(BaseModel):

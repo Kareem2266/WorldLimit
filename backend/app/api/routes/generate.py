@@ -51,4 +51,6 @@ async def generate(body: GenerateRequest) -> GenerateResponse:
         prompt=body.prompt,
         params=TerrainParamsOut(**params),
         heightmap_url=f"{STATIC_URL_PREFIX}/{slug}.png",
+        heightmap_min_m=float(heights.min()),
+        heightmap_max_m=float(heights.max()),
     )
