@@ -39,3 +39,11 @@ rasterio==1.4.3
 scikit-learn==1.4.2
 # pandas: tabular data — used to build and save the feature CSV
 pandas==2.2.2
+
+# torch: PyTorch — defines + trains the text→terrain MLP and runs inference.
+# We pull from the CPU-only wheel index to avoid the ~2 GB CUDA build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1
+# sentence-transformers: turns a string into a 384-dim semantic vector
+# (pre-trained model: all-MiniLM-L6-v2). Pulls in transformers + tokenizers.
+sentence-transformers==2.7.0

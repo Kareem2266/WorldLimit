@@ -34,6 +34,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
 
@@ -52,6 +53,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,3 +63,4 @@ services:
 
 volumes:
   postgres_data:
+  hf_cache:
