@@ -5,11 +5,13 @@ const PLANE_SIZE = 200;
 const GRID = 256;
 const HEIGHT_SCALE = 45;
 const WATER_LEVEL = 0.10;      // fraction of HEIGHT_SCALE
-const WATER_EXTENT = 1.0;      // 1.0 = exactly matches terrain, larger = extends past
+const WATER_EXTENT = 1.0;      // 1.0 = exactly matches terrain
+const BASE_DEPTH = 6;          // how far below Y=0 the skirt/floor sits
 
 let renderer, scene, camera, controls;
 let mesh = null;
 let water = null;
+let base = null;
 let initialized = false;
 
 // ---------- scene setup ----------
@@ -21,6 +23,8 @@ export function initScene(canvas) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x0b0d10);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   _resizeRenderer();
 
   scene = new THREE.Scene();
@@ -35,6 +39,16 @@ export function initScene(canvas) {
 
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(100, 180, 60);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const shadowHalf = PLANE_SIZE * 0.8;
+  sun.shadow.camera.left = -shadowHalf;
+  sun.shadow.camera.right = shadowHalf;
+  sun.shadow.camera.top = shadowHalf;
+  sun.shadow.camera.bottom = -shadowHalf;
+  sun.shadow.camera.near = 10;
+  sun.shadow.camera.far = 600;
+  sun.shadow.bias = -0.0003;
   scene.add(sun);
 
   controls = new OrbitControls(camera, canvas);
@@ -96,9 +110,94 @@ export async function renderTerrain(imageUrl, params = null) {
     mesh.material.dispose();
   }
   mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
 
+  _buildBase(params);
   _buildWater(params);
+}
+
+//  base (skirt + floor)
+
+function _buildBase(params) {
+  if (base) {
+    scene.remove(base);
+    base.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    base = null;
+  }
+
+  const palette = _pickPalette(params);
+  const col = palette.midland;
+  const baseColor = new THREE.Color(col[0] * 0.55, col[1] * 0.50, col[2] * 0.45);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    roughness: 0.95,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  });
+
+  const floorY = -BASE_DEPTH;
+  base = new THREE.Group();
+
+  const pos = mesh.geometry.attributes.position;
+  const edges = _edgeIndexStrips();
+  for (const edge of edges) {
+    const wall = _buildWall(edge, pos, floorY, material);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    base.add(wall);
+  }
+
+  const floorGeom = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE);
+  floorGeom.rotateX(-Math.PI / 2);
+  const floor = new THREE.Mesh(floorGeom, material);
+  floor.position.y = floorY;
+  floor.receiveShadow = true;
+  base.add(floor);
+
+  scene.add(base);
+}
+
+// Index strips for the four edges of the GRID×GRID terrain vertex grid.
+function _edgeIndexStrips() {
+  const top = [], bottom = [], left = [], right = [];
+  for (let c = 0; c < GRID; c++) top.push(c);
+  for (let c = 0; c < GRID; c++) bottom.push((GRID - 1) * GRID + c);
+  for (let r = 0; r < GRID; r++) left.push(r * GRID);
+  for (let r = 0; r < GRID; r++) right.push(r * GRID + (GRID - 1));
+  return [top, bottom, left, right];
+}
+
+function _buildWall(indices, posAttr, floorY, material) {
+  const N = indices.length;
+  const verts = new Float32Array(N * 2 * 3);
+  for (let i = 0; i < N; i++) {
+    const idx = indices[i];
+    const x = posAttr.getX(idx);
+    const y = posAttr.getY(idx);
+    const z = posAttr.getZ(idx);
+    verts[i * 3 + 0] = x;
+    verts[i * 3 + 1] = y;
+    verts[i * 3 + 2] = z;
+    verts[(N + i) * 3 + 0] = x;
+    verts[(N + i) * 3 + 1] = floorY;
+    verts[(N + i) * 3 + 2] = z;
+  }
+  const idx = [];
+  for (let i = 0; i < N - 1; i++) {
+    const t0 = i, t1 = i + 1, b0 = N + i, b1 = N + i + 1;
+    idx.push(t0, b0, t1, t1, b0, b1);
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(verts, 3));
+  geom.setIndex(idx);
+  geom.computeVertexNormals();
+  return new THREE.Mesh(geom, material);
 }
 
 // water
@@ -132,6 +231,7 @@ function _buildWater(params) {
 
   water = new THREE.Mesh(geometry, material);
   water.position.y = WATER_LEVEL * HEIGHT_SCALE;
+  water.receiveShadow = true;
   scene.add(water);
 }
 
