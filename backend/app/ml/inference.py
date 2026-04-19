@@ -10,6 +10,7 @@ Artifacts expected in data/processed/:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -20,12 +21,17 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
+from app.cache import cache_get_json, cache_set_json
 from app.ml.train_prompt_model import EMBEDDER_NAME, TerrainMLP
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 PROCESSED_DIR = DATA_DIR / "processed"
 
 FEATURE_NAMES = ("elev_mean", "elev_std", "slope_mean", "bio1", "bio4", "bio12")
+
+# Bump when the model or scaler change so stale caches auto-invalidate.
+CACHE_MODEL_VERSION = "v1"
+CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 
 
 class TerrainParams(TypedDict):
@@ -50,8 +56,25 @@ def _load_artifacts() -> tuple[SentenceTransformer, TerrainMLP, object]:
     return embedder, model, scaler
 
 
+def _cache_key(prompt: str) -> str:
+    # Prompt can be long/unicode/punctuated — hash it so the Redis key is bounded
+    # and key-safe. Include model version so weight changes invalidate old entries.
+    digest = hashlib.sha1(prompt.strip().lower().encode("utf-8")).hexdigest()[:16]
+    return f"params:{CACHE_MODEL_VERSION}:{digest}"
+
+
 def predict_terrain(prompt: str) -> TerrainParams:
-    """Map a free-text prompt to 6 terrain parameters in original units."""
+    """Map a free-text prompt to 6 terrain parameters in original units.
+
+    Results are cached in Redis for `CACHE_TTL_SECONDS` — repeated prompts
+    skip the ~100 ms MLP round trip. Cache misses (or Redis being down) fall
+    through to the model as normal.
+    """
+    cache_key = _cache_key(prompt)
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return TerrainParams(**cached)
+
     embedder, model, scaler = _load_artifacts()
 
     embedding = embedder.encode([prompt], convert_to_numpy=True)
@@ -59,7 +82,7 @@ def predict_terrain(prompt: str) -> TerrainParams:
         pred_scaled = model(torch.tensor(embedding, dtype=torch.float32)).numpy()
     pred_original = scaler.inverse_transform(pred_scaled)[0]
 
-    return TerrainParams(
+    params = TerrainParams(
         elev_mean=float(pred_original[0]),
         elev_std=float(pred_original[1]),
         slope_mean=float(pred_original[2]),
@@ -67,6 +90,8 @@ def predict_terrain(prompt: str) -> TerrainParams:
         bio4=float(pred_original[4]),
         bio12=float(pred_original[5]),
     )
+    cache_set_json(cache_key, dict(params), ttl_seconds=CACHE_TTL_SECONDS)
+    return params
 
 
 def predict_batch(prompts: list[str]) -> np.ndarray:
