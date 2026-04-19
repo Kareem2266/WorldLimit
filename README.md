@@ -113,25 +113,3 @@ Latency: ~2 s cold, ~5 ms cached.
 ### `POST /api/export`
 
 Same request body. Returns `application/zip` with heightmap + mesh + trees + importer scripts for Godot 4.x and Unity 2022.3+.
-
-## How it works (short version)
-
-1. **Real data foundation.** `download.py` pulls Copernicus GLO-30 DEM tiles for 12 regions spanning every biome, plus WorldClim bioclimate rasters. `preprocess.py` slides a 0.1° grid and computes six features per cell (elevation mean/std, slope, temperature, seasonality, precipitation).
-2. **K-means → 8 biome centroids.** `cluster.py` z-scores the features and fits `KMeans(k=8)`. Centroids become the regression targets. `scaler.joblib` is persisted so inference can un-scale predictions back to meters/°C/mm.
-3. **160 hand-written prompts.** `biome_prompts.py` has ~20 phrases per biome. Each prompt's target is its biome's centroid.
-4. **Frozen embedder + tiny MLP.** `all-mpnet-base-v2` produces 768-dim vectors; a 3-layer MLP (~265k params) regresses them to the 6-dim scaled targets over 200 epochs with early stopping on val loss.
-5. **Perlin synthesis.** `generator.py` uses predicted `elev_mean` as base altitude, `elev_std` as amplitude, and `slope_mean` as octave persistence (smooth dunes ↔ jagged ridges). Output is a 16-bit PNG (not 8-bit — prevents stair-step terracing on mesh displacement).
-6. **Three.js viewer.** `terrain.js` reads the PNG into a `Float32Array`, displaces a `PlaneGeometry`, colors per-vertex via a climate-aware palette, drops a water plane where precipitation warrants, and renders trees with `InstancedMesh` (one draw call per tree type, regardless of count).
-7. **Deterministic export.** `export_bundle.py` rebuilds the same world server-side (same seed → byte-identical output), bakes the vertex palette into a texture, and packages OBJ + PNG + JSON + importer scripts into a ZIP.
-
-For the full design rationale — every "why" behind every choice — see [REPORT.md](./REPORT.md).
-
-## Design principles worth naming
-
-- **Frozen pretrained model + small head.** 160 labeled prompts are enough because the embedder already encodes English.
-- **Cluster centroids as regression targets.** Converts an ill-defined continuous regression into a stable soft-classification.
-- **Scaler persisted next to weights.** Forgetting to `inverse_transform` with the exact training scaler is a silent 2σ bug.
-- **CPU work off the event loop.** `asyncio.to_thread(generate_heightmap, ...)` so the 1.5 s Perlin loop doesn't stall concurrent requests.
-- **Fail-open cache.** Redis down ≠ app down. Versioned keys (`worldlimit:params:v1:...`) invalidate cleanly on retrain without `FLUSHDB`.
-- **Seeded determinism.** `(prompt, seed)` → the same terrain, the same tree placement, byte-identical ZIP. Diffable, cacheable, reproducible.
-- **Instanced rendering.** 4,500 trees as one `InstancedMesh` draw call, mirrored in Godot's `MultiMeshInstance3D` and Unity's `Graphics.DrawMeshInstanced` on export.
