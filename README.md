@@ -8,7 +8,8 @@ prompt  →  MLP  →  6 terrain params  →  Perlin heightmap  →  Three.js 3D
 ```
 
 ## Demo
-https://github.com/user-attachments/assets/c8e9345c-7af3-4354-8279-eede17444b3f
+
+https://github.com/user-attachments/assets/b19e0901-81b5-440c-88c1-9e84c13c7119
 
 
 ## What it does
