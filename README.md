@@ -7,6 +7,10 @@ prompt  →  MLP  →  6 terrain params  →  Perlin heightmap  →  Three.js 3D
                                                           →  Godot/Unity ZIP
 ```
 
+## Demo
+https://github.com/user-attachments/assets/c8e9345c-7af3-4354-8279-eede17444b3f
+
+
 ## What it does
 
 - **Prompt → parameters.** A frozen `sentence-transformers` embedder + a tiny PyTorch MLP maps any English phrase to 6 geophysical numbers (mean elevation, elevation variability, slope, temperature, seasonality, precipitation). Targets were discovered by k-means over real Copernicus DEM + WorldClim data for 12 curated regions.
